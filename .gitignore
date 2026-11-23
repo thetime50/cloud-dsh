@@ -3,3 +3,5 @@ data/
 *.log
 *.db
 *.db-*
+tools/status-observer/config.js
+tools/status-observer/.state.json

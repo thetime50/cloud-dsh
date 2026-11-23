@@ -147,3 +147,43 @@ test('gateway proxies only after play-site accepts the instance', async () => {
     await closeScene(state)
   }
 })
+
+test('manage api creates starts stops and deletes without auth', async () => {
+  const state = await scene()
+  try {
+    const created = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'manage-test' }),
+    })
+    assert.equal(created.status, 201)
+
+    const listed = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances`)
+    assert.equal(listed.status, 200)
+    const rows = await listed.json() as { id: string, status: string }[]
+    assert.ok(rows.some((row) => row.id === 'manage-test'))
+
+    const stopped = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances/manage-test/stop`, {
+      method: 'POST',
+    })
+    assert.equal(stopped.status, 200)
+    assert.equal(((await stopped.json()) as { status: string }).status, 'stopped')
+
+    const started = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances/manage-test/start`, {
+      method: 'POST',
+    })
+    assert.equal(started.status, 200)
+    assert.equal(((await started.json()) as { status: string }).status, 'running')
+
+    const removed = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances/manage-test`, {
+      method: 'DELETE',
+    })
+    assert.equal(removed.status, 200)
+    assert.equal(((await removed.json()) as { status: string }).status, 'deleted')
+
+    const page = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/test`)
+    assert.equal(page.status, 503)
+  } finally {
+    await closeScene(state)
+  }
+})

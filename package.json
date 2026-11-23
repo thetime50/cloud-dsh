@@ -9,7 +9,11 @@
     "start": "node --experimental-strip-types src/index.ts",
     "sandbox-run": "node --experimental-strip-types src/sandbox-run.ts",
     "test": "node --experimental-strip-types --test --test-concurrency=1 test/*.test.ts",
-    "smoke": "node --experimental-strip-types scripts/smoke.ts"
+    "smoke": "node --experimental-strip-types scripts/smoke.ts",
+    "manage:dev": "pnpm --dir manage dev",
+    "manage:install": "pnpm --dir manage install",
+    "tunnel": "node tools/status-observer/start-tunnel.mjs",
+    "status-observer": "node tools/status-observer/index.mjs"
   },
   "bin": {
     "cloud-dsh": "./src/index.ts",

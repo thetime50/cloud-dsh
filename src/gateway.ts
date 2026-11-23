@@ -55,6 +55,56 @@ function rejectUpgrade(socket: Duplex, status: number): void {
   socket.end()
 }
 
+async function handleInstances(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  launcher: Launcher,
+  llmKey: string,
+  baseParts: string[],
+): Promise<void> {
+  const relative = url.pathname.split('/').filter(Boolean).slice(baseParts.length)
+  if (req.method === 'GET' && relative.length === 1 && relative[0] === 'instances') {
+    sendJson(res, 200, launcher.list())
+    return
+  }
+  if (req.method === 'POST' && relative.length === 1 && relative[0] === 'instances') {
+    const raw = await readBody(req)
+    const body = raw ? JSON.parse(raw) as { id?: string } : {}
+    const row = await launcher.create(body.id, llmKey)
+    sendJson(res, 201, row)
+    return
+  }
+  const id = relative[1] || ''
+  if (relative[0] === 'instances' && id && relative.length === 2 && req.method === 'DELETE') {
+    sendJson(res, 200, await launcher.remove(id))
+    return
+  }
+  if (relative[0] === 'instances' && id && relative[2] === 'stop' && req.method === 'POST') {
+    sendJson(res, 200, await launcher.stop(id))
+    return
+  }
+  if (relative[0] === 'instances' && id && relative[2] === 'start' && req.method === 'POST') {
+    sendJson(res, 200, await launcher.start(id, llmKey))
+    return
+  }
+  sendText(res, 404, '未找到')
+}
+
+function proxyManage(req: IncomingMessage, res: ServerResponse, origin: string): void {
+  const target = new URL(req.url || '/manage/', origin)
+  const headers = { ...req.headers, host: target.host }
+  const upstream = http.request(target, { method: req.method, headers }, (up) => {
+    res.writeHead(up.statusCode || 502, up.headers)
+    up.pipe(res)
+  })
+  upstream.on('error', () => {
+    if (!res.headersSent) sendText(res, 502, '管理页不可达')
+    else res.end()
+  })
+  req.pipe(upstream)
+}
+
 export async function startGateway(config: Config, launcher: Launcher): Promise<Gateway> {
   async function handleAdmin(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     if (!config.adminToken) {
@@ -65,32 +115,19 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
       sendText(res, 401, '管理令牌无效')
       return
     }
-    const parts = url.pathname.split('/').filter(Boolean)
-    if (req.method === 'GET' && url.pathname === '/admin/instances') {
-      sendJson(res, 200, launcher.list())
+    await handleInstances(req, res, url, launcher, config.defaultLlmKey, ['admin'])
+  }
+
+  async function handleManage(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    if (url.pathname === '/manage/api' || url.pathname.startsWith('/manage/api/')) {
+      await handleInstances(req, res, url, launcher, config.defaultLlmKey, ['manage', 'api'])
       return
     }
-    if (req.method === 'POST' && url.pathname === '/admin/instances') {
-      const raw = await readBody(req)
-      const body = raw ? JSON.parse(raw) as { id?: string } : {}
-      const row = await launcher.create(body.id, config.defaultLlmKey)
-      sendJson(res, 201, row)
+    if (!config.manageOrigin) {
+      sendText(res, 503, '未配置 CLOUD_DSH_MANAGE_ORIGIN')
       return
     }
-    const id = parts[2] || ''
-    if (parts[0] === 'admin' && parts[1] === 'instances' && id && parts.length === 3 && req.method === 'DELETE') {
-      sendJson(res, 200, await launcher.remove(id))
-      return
-    }
-    if (parts[0] === 'admin' && parts[1] === 'instances' && id && parts[3] === 'stop' && req.method === 'POST') {
-      sendJson(res, 200, await launcher.stop(id))
-      return
-    }
-    if (parts[0] === 'admin' && parts[1] === 'instances' && id && parts[3] === 'start' && req.method === 'POST') {
-      sendJson(res, 200, await launcher.start(id, config.defaultLlmKey))
-      return
-    }
-    sendText(res, 404, '未找到')
+    proxyManage(req, res, config.manageOrigin)
   }
 
   async function openInstance(req: IncomingMessage, id: string) {
@@ -107,7 +144,7 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
     const url = new URL(req.url || '/', 'http://127.0.0.1')
     try {
       if (url.pathname === '/manage' || url.pathname.startsWith('/manage/')) {
-        sendText(res, 404, '未找到')
+        await handleManage(req, res, url)
         return
       }
       if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
