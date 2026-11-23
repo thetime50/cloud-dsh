@@ -7,6 +7,7 @@ import type { Duplex } from 'node:stream'
 import type { Config } from './config.ts'
 import { HttpError } from './errors.ts'
 import type { Launcher } from './launcher.ts'
+import { listMarketApps } from './market.ts'
 import { confirmAccess, readCookie } from './playsite.ts'
 import { matchInstancePath, proxyHttp, proxyUpgrade } from './proxy.ts'
 
@@ -154,6 +155,19 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
   }
 
   async function handleManage(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    if (url.pathname === '/manage/api/apps' || url.pathname === '/manage/api/apps/') {
+      if (req.method !== 'GET') {
+        sendText(res, 404, '未找到')
+        return
+      }
+      sendJson(res, 200, listMarketApps(config.appsDir).map((app) => ({
+        id: app.id,
+        name: app.name,
+        kind: app.kind,
+        description: app.description,
+      })))
+      return
+    }
     if (url.pathname === '/manage/api' || url.pathname.startsWith('/manage/api/')) {
       await handleInstances(req, res, url, launcher, config.defaultLlmKey, ['manage', 'api'])
       return

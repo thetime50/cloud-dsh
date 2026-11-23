@@ -218,6 +218,13 @@ test('manage api creates starts stops and deletes without auth', async () => {
 
     const page = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/test`)
     assert.equal(page.status, 503)
+
+    const apps = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/apps`)
+    assert.equal(apps.status, 200)
+    const listedApps = await apps.json() as { id: string, name: string, kind: string, description: string }[]
+    assert.deepEqual(listedApps.map((app) => app.id), ['base', 'rag-blank'])
+    assert.equal(listedApps[0]?.name, '基础助手')
+    assert.equal('dir' in (listedApps[0] || {}), false)
   } finally {
     await closeScene(state)
   }
