@@ -2,7 +2,8 @@ FROM node:24-bookworm-slim
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g pnpm@9.15.9 @deepseek-ai/dsh@0.2.2-rc.5
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /opt/runtime/uv/uv
 
@@ -22,7 +23,8 @@ ENV NODE_NO_WARNINGS=1 \
     CLOUD_DSH_SANDBOX_LOG=/private/infrastructure/sandbox.ndjson \
     CLOUD_DSH_SANDBOX_BIN=/opt/cloud-dsh/src/sandbox-run.ts \
     CLOUD_DSH_RUNTIME=/opt/runtime \
-    CLOUD_DSH_UV=/opt/runtime/uv/uv
+    CLOUD_DSH_UV=/opt/runtime/uv/uv \
+    CLOUD_DSH_DSH_BIN=/usr/local/bin/dsh
 
 EXPOSE 8080
 VOLUME ["/storage", "/private"]

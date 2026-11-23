@@ -38,11 +38,23 @@ function injectPrefix(html: string, prefix: string): string {
   return script + html
 }
 
+function instanceCookie(header: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(header) ? header.join('; ') : header
+  if (!raw) return undefined
+  const kept = raw.split(';').map((part) => part.trim()).filter((part) => {
+    const name = part.slice(0, part.indexOf('='))
+    return name.length > 0 && name !== 'play_site_token'
+  })
+  return kept.length ? kept.join('; ') : undefined
+}
+
 function forwardHeaders(req: IncomingMessage, port: number): http.OutgoingHttpHeaders {
   const headers: http.OutgoingHttpHeaders = { ...req.headers, host: `127.0.0.1:${port}` }
   delete headers.cookie
   delete headers.authorization
   delete headers['x-user-id']
+  const cookie = instanceCookie(req.headers.cookie)
+  if (cookie) headers.cookie = cookie
   headers['accept-encoding'] = 'identity'
   return headers
 }
@@ -100,6 +112,8 @@ export function proxyUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer,
       if (item != null) lines.push(`${key}: ${item}`)
     }
   }
+  const cookie = instanceCookie(req.headers.cookie)
+  if (cookie) lines.push(`Cookie: ${cookie}`)
   lines.push('', '')
   upstream.on('connect', () => {
     upstream.write(lines.join('\r\n'))

@@ -2,18 +2,19 @@ import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import net from 'node:net'
 import test from 'node:test'
+import type { Config } from '../src/config.ts'
 import { openDb } from '../src/db.ts'
 import { startGateway } from '../src/gateway.ts'
 import { createLauncher } from '../src/launcher.ts'
 import { tempConfig } from './helpers.ts'
 import { startMock } from './mock-playsite.mjs'
 
-async function scene() {
+async function scene(patch: Partial<Config> = {}) {
   const mock = await startMock({
     'token-a': { userId: 'user-a', instanceIds: ['inst-a', 'missing'], llmKey: 'key-from-site' },
     'token-b': { userId: 'user-b', instanceIds: ['inst-b'], llmKey: 'key-b' },
   })
-  const config = tempConfig({ playSiteUrl: mock.url, defaultLlmKey: 'default-key' })
+  const config = tempConfig({ playSiteUrl: mock.url, defaultLlmKey: 'default-key', ...patch })
   const db = openDb(config.dbPath)
   const launcher = createLauncher(config, db)
   const gateway = await startGateway(config, launcher)
@@ -143,6 +144,40 @@ test('gateway proxies only after play-site accepts the instance', async () => {
       socket.on('error', reject)
     })
     assert.match(blocked, /401/)
+  } finally {
+    await closeScene(state)
+  }
+})
+
+test('local dev open skips play-site only on localhost', async () => {
+  const state = await scene({ devOpen: true })
+  try {
+    const created = await admin(state.gateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-a' })
+    assert.equal(created.status, 201)
+    const page = await fetch(`http://127.0.0.1:${state.gateway.port}/i/inst-a/`)
+    assert.equal(page.status, 200)
+    const remote = await new Promise<string>((resolve, reject) => {
+      const socket = net.connect(state.gateway.port, '127.0.0.1', () => {
+        socket.write([
+          'GET /i/inst-a/ HTTP/1.1',
+          'Host: dsh.example.com',
+          'Connection: close',
+          '',
+          '',
+        ].join('\r\n'))
+      })
+      socket.setTimeout(5000, () => {
+        socket.destroy()
+        reject(new Error('remote open timeout'))
+      })
+      let data = ''
+      socket.on('data', (chunk) => {
+        data += chunk.toString('utf8')
+      })
+      socket.on('end', () => resolve(data))
+      socket.on('error', reject)
+    })
+    assert.match(remote, /^HTTP\/1\.1 401/)
   } finally {
     await closeScene(state)
   }

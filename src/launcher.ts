@@ -72,16 +72,19 @@ function writeStubProfile(profileDir: string, apps: { packageName: string, dir: 
 }
 
 async function installRealProfile(config: Config, profileDir: string, apps: { dir: string, packageName: string }[]): Promise<void> {
-  const manifestPath = path.join(profileDir, 'profiles', 'web', 'package.json')
-  if (fs.existsSync(manifestPath)) {
+  const webDir = path.join(profileDir, 'profiles', 'web')
+  const manifestPath = path.join(webDir, 'package.json')
+  const installed = path.join(webDir, 'node_modules')
+  if (fs.existsSync(manifestPath) && fs.existsSync(installed)) {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
       dsh?: { profile?: { bundles?: string[] } }
     }
     const bundles = manifest.dsh?.profile?.bundles || []
     if (apps.every((app) => bundles.includes(app.packageName))) return
   }
+  fs.rmSync(webDir, { recursive: true, force: true })
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(config.dshBin, ['plugin', '--profile', 'web', 'add', ...apps.map((app) => app.dir)], {
+    const child = spawn(config.dshBin, ['plugin', '--profile', 'web', 'add', '-w', ...apps.map((app) => app.dir)], {
       env: dshEnv(config, profileDir, '', ''),
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -128,15 +131,26 @@ function dshEnv(config: Config, profileDir: string, instanceId: string, llmKey: 
   return env
 }
 
+function trustedHosts(publicHost: string): string[] {
+  const hosts = [publicHost]
+  const colon = publicHost.lastIndexOf(':')
+  if (colon <= 0) return hosts
+  const name = publicHost.slice(0, colon)
+  const port = publicHost.slice(colon + 1)
+  if (name === '127.0.0.1') hosts.push(`localhost:${port}`)
+  if (name === 'localhost') hosts.push(`127.0.0.1:${port}`)
+  return hosts
+}
+
 function spawnDsh(config: Config, profileDir: string, instanceId: string, port: number, llmKey: string): ChildProcess {
   const appArgs = [
     '--profile', 'web',
     '--host', '127.0.0.1',
     '--port', String(port),
     '--no-open',
-    '--trusted-host', config.publicHost,
     '--public-url', `http://${config.publicHost}/i/${instanceId}/`,
   ]
+  for (const host of trustedHosts(config.publicHost)) appArgs.push('--trusted-host', host)
   const command = config.dshMode === 'stub' ? process.execPath : config.dshBin
   const args = config.dshMode === 'stub' ? [config.dshBin, ...appArgs] : appArgs
   const logPath = path.join(profileDir, 'dsh.log')

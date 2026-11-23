@@ -1,5 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
+import fs from 'node:fs'
 import http from 'node:http'
+import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import type { Config } from './config.ts'
@@ -47,6 +49,39 @@ function bearerOk(req: IncomingMessage, token: string): boolean {
   const right = Buffer.from(token)
   if (left.length === 0 || left.length !== right.length) return false
   return timingSafeEqual(left, right)
+}
+
+function localDevHost(host: string | undefined): boolean {
+  const raw = host || ''
+  const name = raw.startsWith('[') ? raw.slice(1, raw.indexOf(']')) : raw.split(':')[0]
+  return name === 'localhost' || name === '127.0.0.1' || name === '::1'
+}
+
+function latestWebToken(profileDir: string): string {
+  const logPath = path.join(profileDir, 'dsh.log')
+  let text = ''
+  try {
+    const stat = fs.statSync(logPath)
+    const length = Math.min(stat.size, 8192)
+    const fd = fs.openSync(logPath, 'r')
+    const buffer = Buffer.alloc(length)
+    fs.readSync(fd, buffer, 0, length, Math.max(0, stat.size - length))
+    fs.closeSync(fd)
+    text = buffer.toString('utf8')
+  } catch {
+    return ''
+  }
+  let token = ''
+  for (const match of text.matchAll(/[?&]token=([A-Za-z0-9_-]+)/g)) token = match[1] || ''
+  return token
+}
+
+function entryLocation(reqUrl: string, prefix: string, token: string): string | null {
+  const url = new URL(reqUrl || '/', 'http://127.0.0.1')
+  if (url.searchParams.has('token')) return null
+  if (url.pathname !== prefix && url.pathname !== `${prefix}/`) return null
+  url.searchParams.set('token', token)
+  return `${url.pathname}${url.search}`
 }
 
 function rejectUpgrade(socket: Duplex, status: number): void {
@@ -131,6 +166,9 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
   }
 
   async function openInstance(req: IncomingMessage, id: string) {
+    if (config.devOpen && localDevHost(req.headers.host)) {
+      return launcher.ensure(id, config.defaultLlmKey)
+    }
     const token = readCookie(req.headers.cookie, 'play_site_token')
     const decision = await confirmAccess(config, id, token)
     if (!decision.ok) {
@@ -158,6 +196,16 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
       }
       const row = await openInstance(req, instance.id)
       if (!row.port) throw new HttpError(503, '实例未监听')
+      const cookie = Array.isArray(req.headers.cookie) ? req.headers.cookie.join(';') : (req.headers.cookie || '')
+      if (req.method === 'GET' && !cookie.includes('dsh-auth-')) {
+        const token = latestWebToken(row.profile_dir)
+        const location = token ? entryLocation(req.url || '/', instance.prefix, token) : null
+        if (location) {
+          res.writeHead(302, { location, 'cache-control': 'no-store' })
+          res.end()
+          return
+        }
+      }
       proxyHttp(req, res, row.port, instance.prefix)
     } catch (error) {
       const status = error instanceof HttpError ? error.status : error instanceof SyntaxError ? 400 : 500

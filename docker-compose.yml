@@ -18,9 +18,7 @@ services:
       CLOUD_DSH_SANDBOX_BIN: /opt/cloud-dsh/src/sandbox-run.ts
       CLOUD_DSH_RUNTIME: /opt/runtime
       CLOUD_DSH_UV: /opt/runtime/uv/uv
-      # 本机无真实 DSH 时用 stub；有二进制时在 .env 覆盖 CLOUD_DSH_DSH_BIN / CLOUD_DSH_DSH_MODE
-      CLOUD_DSH_DSH_MODE: stub
-      CLOUD_DSH_DSH_BIN: /opt/cloud-dsh/test/stub-dsh.mjs
+      CLOUD_DSH_HEALTH_TIMEOUT_MS: "180000"
     volumes:
       - cloud-dsh-storage:/storage
       - cloud-dsh-private:/private

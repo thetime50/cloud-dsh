@@ -23,6 +23,7 @@ export type Config = {
   sandboxBin: string
   stubExitAfterMs: number
   manageOrigin: string
+  devOpen: boolean
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -51,5 +52,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sandboxBin: path.resolve(env.CLOUD_DSH_SANDBOX_BIN || path.join('src', 'sandbox-run.ts')),
     stubExitAfterMs: Number(env.CLOUD_DSH_STUB_EXIT_AFTER_MS || 0),
     manageOrigin: env.CLOUD_DSH_MANAGE_ORIGIN || '',
+    devOpen: env.CLOUD_DSH_DEV_OPEN === '1',
   }
 }
