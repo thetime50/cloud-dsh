@@ -1,0 +1,15 @@
+- insert:
+    - id: cloud-dsh-app-rag-blank
+      name: cloud-dsh-app-rag-blank
+    - id: preset-rag-blank
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: rag-blank
+        order: 21
+        name: 知识库
+        description: 继承基础助手，知识库尚未接入
+        plugins:
+          - id: rag-persona
+            name: cloud-dsh-app-rag-blank/persona.mjs
+          - id: sandbox-tools
+            name: cloud-dsh-app-base/tools.mjs

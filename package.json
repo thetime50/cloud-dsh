@@ -1,0 +1,22 @@
+{
+  "name": "cloud-dsh",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.9"
+  },
+  "scripts": {
+    "start": "node --experimental-strip-types src/index.ts",
+    "sandbox-run": "node --experimental-strip-types src/sandbox-run.ts",
+    "test": "node --experimental-strip-types --test --test-concurrency=1 test/*.test.ts",
+    "smoke": "node --experimental-strip-types scripts/smoke.ts"
+  },
+  "bin": {
+    "cloud-dsh": "./src/index.ts",
+    "sandbox-run": "./src/sandbox-run.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  }
+}

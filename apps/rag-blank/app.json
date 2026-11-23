@@ -1,0 +1,6 @@
+{
+  "id": "rag-blank",
+  "name": "知识库",
+  "kind": "rag",
+  "description": "继承基础助手，知识库尚未接入"
+}

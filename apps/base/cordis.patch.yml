@@ -1,0 +1,15 @@
+- insert:
+    - id: cloud-dsh-app-base
+      name: cloud-dsh-app-base
+    - id: preset-base
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: base
+        order: 20
+        name: 基础助手
+        description: 通用助手
+        plugins:
+          - id: base-persona
+            name: cloud-dsh-app-base/persona.mjs
+          - id: sandbox-tools
+            name: cloud-dsh-app-base/tools.mjs

@@ -1,0 +1,174 @@
+import { timingSafeEqual } from 'node:crypto'
+import http from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { Duplex } from 'node:stream'
+import type { Config } from './config.ts'
+import { HttpError } from './errors.ts'
+import type { Launcher } from './launcher.ts'
+import { confirmAccess, readCookie } from './playsite.ts'
+import { matchInstancePath, proxyHttp, proxyUpgrade } from './proxy.ts'
+
+export type Gateway = {
+  port: number
+  close(): Promise<void>
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  const raw = JSON.stringify(body)
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(raw),
+  })
+  res.end(raw)
+}
+
+function sendText(res: ServerResponse, status: number, message: string): void {
+  res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' })
+  res.end(message)
+}
+
+async function readBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    size += buffer.length
+    if (size > 1024 * 1024) throw new HttpError(413, '请求过大')
+    chunks.push(buffer)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+function bearerOk(req: IncomingMessage, token: string): boolean {
+  const header = req.headers.authorization || ''
+  const match = /^Bearer\s+(\S+)\s*$/i.exec(header)
+  const got = match?.[1] || ''
+  const left = Buffer.from(got)
+  const right = Buffer.from(token)
+  if (left.length === 0 || left.length !== right.length) return false
+  return timingSafeEqual(left, right)
+}
+
+function rejectUpgrade(socket: Duplex, status: number): void {
+  const reason = status === 401 ? 'Unauthorized' : 'Forbidden'
+  socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`)
+  socket.end()
+}
+
+export async function startGateway(config: Config, launcher: Launcher): Promise<Gateway> {
+  async function handleAdmin(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    if (!config.adminToken) {
+      sendText(res, 503, '未配置管理令牌')
+      return
+    }
+    if (!bearerOk(req, config.adminToken)) {
+      sendText(res, 401, '管理令牌无效')
+      return
+    }
+    const parts = url.pathname.split('/').filter(Boolean)
+    if (req.method === 'GET' && url.pathname === '/admin/instances') {
+      sendJson(res, 200, launcher.list())
+      return
+    }
+    if (req.method === 'POST' && url.pathname === '/admin/instances') {
+      const raw = await readBody(req)
+      const body = raw ? JSON.parse(raw) as { id?: string } : {}
+      const row = await launcher.create(body.id, config.defaultLlmKey)
+      sendJson(res, 201, row)
+      return
+    }
+    const id = parts[2] || ''
+    if (parts[0] === 'admin' && parts[1] === 'instances' && id && parts.length === 3 && req.method === 'DELETE') {
+      sendJson(res, 200, await launcher.remove(id))
+      return
+    }
+    if (parts[0] === 'admin' && parts[1] === 'instances' && id && parts[3] === 'stop' && req.method === 'POST') {
+      sendJson(res, 200, await launcher.stop(id))
+      return
+    }
+    if (parts[0] === 'admin' && parts[1] === 'instances' && id && parts[3] === 'start' && req.method === 'POST') {
+      sendJson(res, 200, await launcher.start(id, config.defaultLlmKey))
+      return
+    }
+    sendText(res, 404, '未找到')
+  }
+
+  async function openInstance(req: IncomingMessage, id: string) {
+    const token = readCookie(req.headers.cookie, 'play_site_token')
+    const decision = await confirmAccess(config, id, token)
+    if (!decision.ok) {
+      const message = decision.status === 401 ? '未登录' : decision.status === 502 ? '主站不可达' : '主站未通过'
+      throw new HttpError(decision.status, message)
+    }
+    return launcher.ensure(id, decision.llmKey || config.defaultLlmKey)
+  }
+
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    try {
+      if (url.pathname === '/manage' || url.pathname.startsWith('/manage/')) {
+        sendText(res, 404, '未找到')
+        return
+      }
+      if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
+        await handleAdmin(req, res, url)
+        return
+      }
+      const instance = matchInstancePath(req.url)
+      if (!instance) {
+        sendText(res, 404, '未找到')
+        return
+      }
+      const row = await openInstance(req, instance.id)
+      if (!row.port) throw new HttpError(503, '实例未监听')
+      proxyHttp(req, res, row.port, instance.prefix)
+    } catch (error) {
+      const status = error instanceof HttpError ? error.status : error instanceof SyntaxError ? 400 : 500
+      const message = error instanceof Error ? error.message : '内部错误'
+      if (!res.headersSent) sendText(res, status, message)
+      else res.end()
+    }
+  })
+
+  server.on('upgrade', (req, socket, head) => {
+    const instance = matchInstancePath(req.url)
+    if (!instance) {
+      rejectUpgrade(socket, 404)
+      return
+    }
+    void openInstance(req, instance.id).then((row) => {
+      if (!row.port) {
+        rejectUpgrade(socket, 503)
+        return
+      }
+      proxyUpgrade(req, socket, head, row.port, instance.prefix)
+    }).catch((error: unknown) => {
+      const status = error instanceof HttpError ? error.status : 500
+      rejectUpgrade(socket, status)
+    })
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => reject(error)
+    server.once('error', onError)
+    server.listen(config.gatewayPort, config.gatewayHost, () => {
+      server.off('error', onError)
+      resolve()
+    })
+  })
+  const address = server.address()
+  const port = address && typeof address === 'object' ? address.port : config.gatewayPort
+  return {
+    port,
+    close() {
+      return new Promise((resolve) => {
+        const timer = setTimeout(resolve, 250)
+        server.close(() => {
+          clearTimeout(timer)
+          resolve()
+        })
+        server.closeAllConnections()
+      })
+    },
+  }
+}
