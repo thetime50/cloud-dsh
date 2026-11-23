@@ -1,0 +1,16 @@
+node_modules
+manage/node_modules
+manage/.nuxt
+manage/.output
+data
+.git
+.specstory
+.vscode
+*.log
+*.db
+*.db-*
+tools/status-observer/config.js
+tools/status-observer/.state.json
+doc
+back.md
+pnpm-lock.yaml

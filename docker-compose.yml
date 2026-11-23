@@ -1,0 +1,31 @@
+services:
+  cloud-dsh:
+    build: .
+    image: cloud-dsh:local
+    container_name: cloud-dsh
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      CLOUD_DSH_GATEWAY_HOST: 0.0.0.0
+      CLOUD_DSH_GATEWAY_PORT: "8080"
+      CLOUD_DSH_STORAGE: /storage
+      CLOUD_DSH_PRIVATE: /private
+      CLOUD_DSH_APPS: /opt/apps
+      CLOUD_DSH_DB: /private/infrastructure/control.db
+      CLOUD_DSH_SANDBOX_LOG: /private/infrastructure/sandbox.ndjson
+      CLOUD_DSH_SANDBOX_BIN: /opt/cloud-dsh/src/sandbox-run.ts
+      CLOUD_DSH_RUNTIME: /opt/runtime
+      CLOUD_DSH_UV: /opt/runtime/uv/uv
+      # 本机无真实 DSH 时用 stub；有二进制时在 .env 覆盖 CLOUD_DSH_DSH_BIN / CLOUD_DSH_DSH_MODE
+      CLOUD_DSH_DSH_MODE: stub
+      CLOUD_DSH_DSH_BIN: /opt/cloud-dsh/test/stub-dsh.mjs
+    volumes:
+      - cloud-dsh-storage:/storage
+      - cloud-dsh-private:/private
+    restart: unless-stopped
+
+volumes:
+  cloud-dsh-storage:
+  cloud-dsh-private:

@@ -9,6 +9,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /opt/runtime/uv/uv
 WORKDIR /opt/cloud-dsh
 COPY package.json ./
 COPY src ./src
+COPY test/stub-dsh.mjs ./test/stub-dsh.mjs
 COPY apps /opt/apps
 
 ENV NODE_NO_WARNINGS=1 \
