@@ -1,5 +1,5 @@
 <script setup lang="ts">
-await navigateTo('/environments')
+await navigateTo('/env')
 </script>
 
 <template>

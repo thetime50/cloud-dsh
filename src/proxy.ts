@@ -59,7 +59,17 @@ function forwardHeaders(req: IncomingMessage, port: number): http.OutgoingHttpHe
   return headers
 }
 
-export function proxyHttp(req: IncomingMessage, res: ServerResponse, port: number, prefix: string): void {
+function expiredAuthCookies(header: string | string[] | undefined): string[] {
+  const raw = Array.isArray(header) ? header.join('; ') : header || ''
+  const names = new Set<string>()
+  for (const part of raw.split(';')) {
+    const name = part.trim().split('=')[0]
+    if (name.startsWith('dsh-auth-')) names.add(name)
+  }
+  return [...names].map((name) => `${name}=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict`)
+}
+
+export function proxyHttp(req: IncomingMessage, res: ServerResponse, port: number, prefix: string, authLocation?: string | null): void {
   const target = upstreamPath(req.url || '/', prefix)
   const upstream = http.request({
     hostname: '127.0.0.1',
@@ -70,6 +80,28 @@ export function proxyHttp(req: IncomingMessage, res: ServerResponse, port: numbe
   }, (upstreamResponse) => {
     const type = String(upstreamResponse.headers['content-type'] || '')
     if (!type.includes('text/html')) {
+      if (authLocation && upstreamResponse.statusCode === 401) {
+        const chunks: Buffer[] = []
+        upstreamResponse.on('data', (chunk: Buffer) => chunks.push(chunk))
+        upstreamResponse.on('end', () => {
+          const body = Buffer.concat(chunks)
+          if (body.toString('utf8').includes('dsh web authentication required')) {
+            const headers: http.OutgoingHttpHeaders = {
+              location: authLocation,
+              'cache-control': 'no-store',
+            }
+            const clear = expiredAuthCookies(req.headers.cookie)
+            if (clear.length) headers['set-cookie'] = clear
+            res.writeHead(302, headers)
+            res.end()
+            return
+          }
+          const headers = rewriteHeaders(upstreamResponse.headers, prefix)
+          res.writeHead(401, headers)
+          res.end(body)
+        })
+        return
+      }
       const headers = rewriteHeaders(upstreamResponse.headers, prefix)
       res.writeHead(upstreamResponse.statusCode || 502, headers)
       upstreamResponse.pipe(res)

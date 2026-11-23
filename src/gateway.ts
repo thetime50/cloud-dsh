@@ -180,6 +180,9 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
   }
 
   async function openInstance(req: IncomingMessage, id: string) {
+    const current = launcher.list().find((row) => row.id === id)
+    if (!current || current.status === 'deleted') throw new HttpError(404, '实例不存在')
+    if (current.status === 'stopped') throw new HttpError(503, '实例已停止')
     if (config.devOpen && localDevHost(req.headers.host)) {
       return launcher.ensure(id, config.defaultLlmKey)
     }
@@ -211,16 +214,14 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
       const row = await openInstance(req, instance.id)
       if (!row.port) throw new HttpError(503, '实例未监听')
       const cookie = Array.isArray(req.headers.cookie) ? req.headers.cookie.join(';') : (req.headers.cookie || '')
-      if (req.method === 'GET' && !cookie.includes('dsh-auth-')) {
-        const token = latestWebToken(row.profile_dir)
-        const location = token ? entryLocation(req.url || '/', instance.prefix, token) : null
-        if (location) {
-          res.writeHead(302, { location, 'cache-control': 'no-store' })
-          res.end()
-          return
-        }
+      const token = latestWebToken(row.profile_dir)
+      const location = token ? entryLocation(req.url || '/', instance.prefix, token) : null
+      if (req.method === 'GET' && location && !cookie.includes('dsh-auth-')) {
+        res.writeHead(302, { location, 'cache-control': 'no-store' })
+        res.end()
+        return
       }
-      proxyHttp(req, res, row.port, instance.prefix)
+      proxyHttp(req, res, row.port, instance.prefix, location)
     } catch (error) {
       const status = error instanceof HttpError ? error.status : error instanceof SyntaxError ? 400 : 500
       const message = error instanceof Error ? error.message : '内部错误'

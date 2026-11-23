@@ -183,6 +183,22 @@ test('local dev open skips play-site only on localhost', async () => {
   }
 })
 
+test('stopped instance is not opened again', async () => {
+  const state = await scene({ devOpen: true })
+  try {
+    const created = await admin(state.gateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-a' })
+    assert.equal(created.status, 201)
+    const stopped = await admin(state.gateway.port, 'POST', '/admin/instances/inst-a/stop')
+    assert.equal(stopped.status, 200)
+    const page = await fetch(`http://127.0.0.1:${state.gateway.port}/i/inst-a/`)
+    assert.equal(page.status, 503)
+    assert.match(await page.text(), /实例已停止/)
+    assert.equal(state.db.get('inst-a')?.status, 'stopped')
+  } finally {
+    await closeScene(state)
+  }
+})
+
 test('manage api creates starts stops and deletes without auth', async () => {
   const state = await scene()
   try {

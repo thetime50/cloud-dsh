@@ -2,9 +2,9 @@
   <div>
     <nav class="nav">
       <NuxtLink to="/apps">应用市场</NuxtLink>
-      <NuxtLink to="/environments">用户环境</NuxtLink>
-      <NuxtLink to="/resources">资源监控</NuxtLink>
-      <NuxtLink to="/security">安全监控</NuxtLink>
+      <NuxtLink to="/env">用户环境</NuxtLink>
+      <NuxtLink to="/res">资源监控</NuxtLink>
+      <NuxtLink to="/sec">安全监控</NuxtLink>
     </nav>
     <NuxtPage />
   </div>
