@@ -132,4 +132,4 @@ const tick = async () => {
 
 await tick()
 if (process.argv.includes('--once')) process.exit(0)
-setInterval(tick, config.intervalMs || 30_000)
+setInterval(tick, config.intervalMs || 120_000)

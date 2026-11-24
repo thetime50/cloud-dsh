@@ -10,7 +10,7 @@ export default {
   // 状态页上的组件名称（启动时按名称解析 component_id）
   statusName: 'cloudflared-tunnel-test',
   apiBase: 'https://api.flashcat.cloud',
-  intervalMs: 30_000,
+  intervalMs: 120_000,
   timeoutMs: 10_000,
   notifySubscribers: false,
   testRequests: [
