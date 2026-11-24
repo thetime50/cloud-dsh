@@ -138,7 +138,10 @@ async function fetchAnomalyDays(monitorId, year, month) {
   if (!res.ok) throw new Error(`anomaly-days ${res.status}`)
   const data = await res.json()
   if (!data.ok) throw new Error(data.msg || 'anomaly-days failed')
-  return new Set(data.days || [])
+  return {
+    anomaly: new Set(data.days || []),
+    dataDays: new Set(data.dataDays || []),
+  }
 }
 
 async function fetchDayEvents(monitorId, day) {
@@ -243,7 +246,7 @@ function createMonitorController(monitor, initialBeats, uptimeList) {
   calendar.innerHTML = `
     <summary class="event-calendar-summary">
       <span>事件日历</span>
-      <span class="event-calendar-hint">默认折叠 · 展开后懒加载</span>
+      <span class="event-calendar-hint" aria-hidden="true">‹</span>
     </summary>
     <div class="event-calendar-body">
       <div class="event-calendar-toolbar">
@@ -438,17 +441,28 @@ function createMonitorController(monitor, initialBeats, uptimeList) {
   async function ensureAnomalyDays() {
     const key = `${state.calYear}-${state.calMonth}`
     if (state.anomalyCache.has(key)) return state.anomalyCache.get(key)
-    calStatus.textContent = '加载异常日…'
-    const days = await fetchAnomalyDays(state.monitorId, state.calYear, state.calMonth)
-    state.anomalyCache.set(key, days)
-    calStatus.textContent = days.size ? `本月异常日 ${days.size} 天` : '本月无异常日'
-    return days
+    calStatus.textContent = '加载日历数据…'
+    const meta = await fetchAnomalyDays(state.monitorId, state.calYear, state.calMonth)
+    state.anomalyCache.set(key, meta)
+    const a = meta.anomaly.size
+    const d = meta.dataDays.size
+    calStatus.textContent = a
+      ? `本月有数据 ${d} 天 · 异常 ${a} 天`
+      : d
+        ? `本月有数据 ${d} 天 · 无异常`
+        : '本月无数据'
+    return meta
   }
 
   function renderCalendarGrid() {
     hidePopover()
     calTitle.textContent = `${state.calYear}年${state.calMonth}月`
-    const anomaly = state.anomalyCache.get(`${state.calYear}-${state.calMonth}`) || new Set()
+    const meta = state.anomalyCache.get(`${state.calYear}-${state.calMonth}`) || {
+      anomaly: new Set(),
+      dataDays: new Set(),
+    }
+    const anomaly = meta.anomaly
+    const dataDays = meta.dataDays
     const today = todayKeyUTC()
     const first = new Date(Date.UTC(state.calYear, state.calMonth - 1, 1))
     // Monday-first index
@@ -501,6 +515,10 @@ function createMonitorController(monitor, initialBeats, uptimeList) {
       inner.className = 'cal-day-inner'
       inner.textContent = String(d)
       cell.appendChild(inner)
+
+      if (!outside && dataDays.has(key)) {
+        cell.classList.add('has-data')
+      }
 
       if (!outside && key === today) {
         cell.classList.add('is-today')

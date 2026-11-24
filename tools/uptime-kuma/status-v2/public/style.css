@@ -173,7 +173,7 @@ h1 {
   background: #fbfcfb;
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 16px 12px 8px;
+  padding: 8px 12px 8px;
   margin: 8px 0 12px;
   text-align: center;
 }
@@ -241,7 +241,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 6px 14px;
   font-weight: 600;
   font-size: 14px;
 }
@@ -251,9 +251,20 @@ h1 {
 }
 
 .event-calendar-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
   font-weight: 400;
-  font-size: 12px;
+  font-size: 16px;
+  line-height: 1;
   color: var(--muted);
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
+}
+
+.event-calendar-card[open] > .event-calendar-summary .event-calendar-hint {
+  transform: rotate(90deg);
 }
 
 .event-calendar-body {
@@ -349,10 +360,10 @@ h1 {
   appearance: none;
   border: 0;
   background: transparent;
-  padding: 4px 0 10px;
+  padding: 0; /* 4px 0 4px; */
   cursor: pointer;
   border-radius: 0;
-  min-height: 40px;
+  /* min-height: 40px; */
 }
 
 .cal-day:hover:not(:disabled):not(.in-range) {
@@ -377,6 +388,16 @@ h1 {
 
 .cal-day.outside .cal-day-inner {
   color: rgba(107, 124, 114, 0.48);
+}
+
+/* 有监控数据的日期：墨绿色 */
+.cal-day.has-data .cal-day-inner {
+  color: var(--up);
+  font-weight: 600;
+}
+
+.cal-day.has-data.in-range .cal-day-inner {
+  color: var(--up);
 }
 
 /* 连续选中条：矩形，仅首尾圆角 */

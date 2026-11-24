@@ -81,18 +81,38 @@ function fetchBeatsByPeriod(db, monitorId, periodHours) {
   return fetchBeatsByRange(db, monitorId, formatKumaTime(from), formatKumaTime(to))
 }
 
-function fetchAnomalyDays(db, monitorId, year, month) {
+function monthBounds(year, month) {
   const start = `${year}-${pad(month)}-01 00:00:00.000`
   const next =
     month === 12
       ? `${year + 1}-01-01 00:00:00.000`
       : `${year}-${pad(month + 1)}-01 00:00:00.000`
+  return { start, next }
+}
+
+function fetchAnomalyDays(db, monitorId, year, month) {
+  const { start, next } = monthBounds(year, month)
   const rows = db
     .prepare(
       `SELECT DISTINCT substr(time, 1, 10) AS day
        FROM heartbeat
        WHERE monitor_id = ?
          AND status != 1
+         AND time >= ?
+         AND time < ?`,
+    )
+    .all(monitorId, start, next)
+  return rows.map((r) => r.day)
+}
+
+/** 当月有任意心跳记录的日期（含正常） */
+function fetchDataDays(db, monitorId, year, month) {
+  const { start, next } = monthBounds(year, month)
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT substr(time, 1, 10) AS day
+       FROM heartbeat
+       WHERE monitor_id = ?
          AND time >= ?
          AND time < ?`,
     )
@@ -167,7 +187,8 @@ const server = http.createServer((req, res) => {
       const db = openDb()
       try {
         const days = fetchAnomalyDays(db, monitorId, year, month)
-        json(res, 200, { ok: true, monitorId, year, month, days })
+        const dataDays = fetchDataDays(db, monitorId, year, month)
+        json(res, 200, { ok: true, monitorId, year, month, days, dataDays })
       } finally {
         db.close()
       }
