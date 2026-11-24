@@ -4,5 +4,3 @@ data/
 *.db
 *.db-*
 .env
-tools/status-observer/config.js
-tools/status-observer/.state.json

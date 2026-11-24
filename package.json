@@ -12,8 +12,6 @@
     "smoke": "node --experimental-strip-types scripts/smoke.ts",
     "manage:dev": "pnpm --dir manage dev",
     "manage:install": "pnpm --dir manage install",
-    "tunnel": "node tools/status-observer/start-tunnel.mjs",
-    "status-observer": "node tools/status-observer/index.mjs",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f cloud-dsh"
