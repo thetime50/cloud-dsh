@@ -1,3 +1,6 @@
+/**
+ * 启动 cloudflared 临时隧道，并把拿到的 trycloudflare URL 写回 config.js。
+ */
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'

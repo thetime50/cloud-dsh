@@ -1,4 +1,8 @@
 /**
+ * FlashDuty Status Page API 封装：鉴权请求、按名称解析/创建组件、开故障与恢复。
+ */
+
+/**
  * @param {string} apiBase
  * @param {string} statusKey
  * @param {string} path

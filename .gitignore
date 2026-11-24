@@ -6,3 +6,5 @@ data/
 .env
 tools/status-observer/config.js
 tools/status-observer/.state.json
+tools/status-observer/uptimeflare-latency-stats.json
+tools/status-observer/uptimeflare-latency-raw.json
