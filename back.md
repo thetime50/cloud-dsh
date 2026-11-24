@@ -8,4 +8,5 @@ x 鉴权参考项目 D:\1024\vibe\play-site\ 和主站同域名
 根据设计创建plan 3个阶段，每个阶段可验证
 
 1. 现在没什么人用 实例最多5个 docker内存磁盘不需要太多，后面有需要再扩容
-2. status-observer 检测条件为这默认实例
+2. status-observer 检测条件为/manage/api/instances 有返回数组
+帮我FlashDuty UptimeFlare增加站点https://pst.thetime50.com/api/nav-menu

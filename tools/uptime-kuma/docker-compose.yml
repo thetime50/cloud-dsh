@@ -1,0 +1,10 @@
+# 本机 Uptime Kuma：探测站点、存延迟历史、提供控制台/状态页（默认 http://127.0.0.1:3002）
+services:
+  uptime-kuma:
+    image: docker.m.daocloud.io/louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - '3002:3001'
+    volumes:
+      - ./data:/app/data
