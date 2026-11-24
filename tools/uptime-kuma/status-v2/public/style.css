@@ -379,6 +379,16 @@ h1 {
   color: rgba(107, 124, 114, 0.48);
 }
 
+/* 有监控数据的日期：墨绿色 */
+.cal-day.has-data .cal-day-inner {
+  color: var(--up);
+  font-weight: 600;
+}
+
+.cal-day.has-data.in-range .cal-day-inner {
+  color: var(--up);
+}
+
 /* 连续选中条：矩形，仅首尾圆角 */
 .cal-day.in-range {
   background: rgba(92, 124, 250, 0.16);
