@@ -15,7 +15,7 @@ export default {
   notifySubscribers: false,
   testRequests: [
     {
-      url: tunnelUrl,
+      url: `${tunnelUrl}/manage/api/instances`,
       /**
        * @type {Array<(ctx: ProbeCtx) => CheckResult | Promise<CheckResult>>}
        */
@@ -26,9 +26,13 @@ export default {
           return { ok: true }
         },
         (ctx) => {
-          if (!String(ctx.text || '').includes('hello tunnel')) {
-            return { ok: false, message: '响应未包含 hello tunnel' }
+          let data
+          try {
+            data = JSON.parse(ctx.text || '')
+          } catch {
+            return { ok: false, message: '响应不是 JSON' }
           }
+          if (!Array.isArray(data)) return { ok: false, message: '响应不是数组' }
           return { ok: true }
         },
       ],

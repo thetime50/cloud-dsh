@@ -80,7 +80,7 @@ onMounted(() => {
 <template>
   <main class="page">
     <h1>用户环境</h1>
-    <p class="hint">无鉴权，直接调用 /manage/api。仅用于本地联调。</p>
+    <p class="hint">列表向主站要当前用户的实例。</p>
 
     <section class="create">
       <input v-model="newId" placeholder="可选实例 id" :disabled="busy" @keyup.enter="create">

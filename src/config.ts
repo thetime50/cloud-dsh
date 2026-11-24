@@ -16,6 +16,7 @@ export type Config = {
   uvBin: string
   playSiteUrl: string
   playSiteAccessPath: string
+  playSiteInstancesPath: string
   playSiteTimeoutMs: number
   defaultLlmKey: string
   publicHost: string
@@ -23,7 +24,6 @@ export type Config = {
   sandboxBin: string
   stubExitAfterMs: number
   manageOrigin: string
-  devOpen: boolean
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -45,6 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     uvBin: env.CLOUD_DSH_UV || 'uv',
     playSiteUrl: env.CLOUD_DSH_PLAY_SITE_URL || 'http://127.0.0.1:9',
     playSiteAccessPath: env.CLOUD_DSH_PLAY_SITE_ACCESS_PATH || '/api/internal/dsh/access',
+    playSiteInstancesPath: env.CLOUD_DSH_PLAY_SITE_INSTANCES_PATH || '/api/internal/dsh/instances',
     playSiteTimeoutMs: Number(env.CLOUD_DSH_PLAY_SITE_TIMEOUT_MS || 5000),
     defaultLlmKey: env.CLOUD_DSH_DEFAULT_LLM_KEY || '',
     publicHost: env.CLOUD_DSH_PUBLIC_HOST || 'dsh.xx.yy.com',
@@ -52,6 +53,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sandboxBin: path.resolve(env.CLOUD_DSH_SANDBOX_BIN || path.join('src', 'sandbox-run.ts')),
     stubExitAfterMs: Number(env.CLOUD_DSH_STUB_EXIT_AFTER_MS || 0),
     manageOrigin: env.CLOUD_DSH_MANAGE_ORIGIN || '',
-    devOpen: env.CLOUD_DSH_DEV_OPEN === '1',
   }
 }

@@ -8,7 +8,7 @@ import type { Config } from './config.ts'
 import { HttpError } from './errors.ts'
 import type { Launcher } from './launcher.ts'
 import { listMarketApps } from './market.ts'
-import { confirmAccess, readCookie } from './playsite.ts'
+import { confirmAccess, listUserInstances, readCookie } from './playsite.ts'
 import { matchInstancePath, proxyHttp, proxyUpgrade } from './proxy.ts'
 
 export type Gateway = {
@@ -52,12 +52,6 @@ function bearerOk(req: IncomingMessage, token: string): boolean {
   return timingSafeEqual(left, right)
 }
 
-function localDevHost(host: string | undefined): boolean {
-  const raw = host || ''
-  const name = raw.startsWith('[') ? raw.slice(1, raw.indexOf(']')) : raw.split(':')[0]
-  return name === 'localhost' || name === '127.0.0.1' || name === '::1'
-}
-
 function latestWebToken(profileDir: string): string {
   const logPath = path.join(profileDir, 'dsh.log')
   let text = ''
@@ -91,23 +85,45 @@ function rejectUpgrade(socket: Duplex, status: number): void {
   socket.end()
 }
 
+function playSiteError(status: number): HttpError {
+  const message = status === 401 ? '未登录' : status === 502 ? '主站不可达' : '主站未通过'
+  return new HttpError(status, message)
+}
+
 async function handleInstances(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
   launcher: Launcher,
-  llmKey: string,
+  config: Config,
   baseParts: string[],
+  fromPlaySite: boolean,
 ): Promise<void> {
   const relative = url.pathname.split('/').filter(Boolean).slice(baseParts.length)
   if (req.method === 'GET' && relative.length === 1 && relative[0] === 'instances') {
-    sendJson(res, 200, launcher.list())
+    if (!fromPlaySite) {
+      sendJson(res, 200, launcher.list())
+      return
+    }
+    const token = readCookie(req.headers.cookie, 'play_site_token')
+    const decision = await listUserInstances(config, token)
+    if (!decision.ok) throw playSiteError(decision.status)
+    const byId = new Map(launcher.list().map((row) => [row.id, row]))
+    const seen = new Set<string>()
+    const rows = []
+    for (const id of decision.instanceIds) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      const row = byId.get(id)
+      if (row) rows.push(row)
+    }
+    sendJson(res, 200, rows)
     return
   }
   if (req.method === 'POST' && relative.length === 1 && relative[0] === 'instances') {
     const raw = await readBody(req)
     const body = raw ? JSON.parse(raw) as { id?: string } : {}
-    const row = await launcher.create(body.id, llmKey)
+    const row = await launcher.create(body.id, config.defaultLlmKey)
     sendJson(res, 201, row)
     return
   }
@@ -121,7 +137,7 @@ async function handleInstances(
     return
   }
   if (relative[0] === 'instances' && id && relative[2] === 'start' && req.method === 'POST') {
-    sendJson(res, 200, await launcher.start(id, llmKey))
+    sendJson(res, 200, await launcher.start(id, config.defaultLlmKey))
     return
   }
   sendText(res, 404, '未找到')
@@ -151,7 +167,7 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
       sendText(res, 401, '管理令牌无效')
       return
     }
-    await handleInstances(req, res, url, launcher, config.defaultLlmKey, ['admin'])
+    await handleInstances(req, res, url, launcher, config, ['admin'], false)
   }
 
   async function handleManage(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
@@ -169,7 +185,7 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
       return
     }
     if (url.pathname === '/manage/api' || url.pathname.startsWith('/manage/api/')) {
-      await handleInstances(req, res, url, launcher, config.defaultLlmKey, ['manage', 'api'])
+      await handleInstances(req, res, url, launcher, config, ['manage', 'api'], true)
       return
     }
     if (!config.manageOrigin) {
@@ -183,15 +199,9 @@ export async function startGateway(config: Config, launcher: Launcher): Promise<
     const current = launcher.list().find((row) => row.id === id)
     if (!current || current.status === 'deleted') throw new HttpError(404, '实例不存在')
     if (current.status === 'stopped') throw new HttpError(503, '实例已停止')
-    if (config.devOpen && localDevHost(req.headers.host)) {
-      return launcher.ensure(id, config.defaultLlmKey)
-    }
     const token = readCookie(req.headers.cookie, 'play_site_token')
     const decision = await confirmAccess(config, id, token)
-    if (!decision.ok) {
-      const message = decision.status === 401 ? '未登录' : decision.status === 502 ? '主站不可达' : '主站未通过'
-      throw new HttpError(decision.status, message)
-    }
+    if (!decision.ok) throw playSiteError(decision.status)
     return launcher.ensure(id, decision.llmKey || config.defaultLlmKey)
   }
 

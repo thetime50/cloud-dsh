@@ -149,18 +149,21 @@ test('gateway proxies only after play-site accepts the instance', async () => {
   }
 })
 
-test('local dev open skips play-site only on localhost', async () => {
-  const state = await scene({ devOpen: true })
+test('approved play-site opens a tunnel host without a cookie', async () => {
+  const mock = await startMock(null)
+  const config = tempConfig({ playSiteUrl: mock.url, defaultLlmKey: 'default-key' })
+  const db = openDb(config.dbPath)
+  const launcher = createLauncher(config, db)
+  const gateway = await startGateway(config, launcher)
+  const state = { mock, config, db, launcher, gateway }
   try {
-    const created = await admin(state.gateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-a' })
+    const created = await admin(gateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-a' })
     assert.equal(created.status, 201)
-    const page = await fetch(`http://127.0.0.1:${state.gateway.port}/i/inst-a/`)
-    assert.equal(page.status, 200)
     const remote = await new Promise<string>((resolve, reject) => {
-      const socket = net.connect(state.gateway.port, '127.0.0.1', () => {
+      const socket = net.connect(gateway.port, '127.0.0.1', () => {
         socket.write([
           'GET /i/inst-a/ HTTP/1.1',
-          'Host: dsh.example.com',
+          'Host: collectables-templates-pmc-boom.trycloudflare.com',
           'Connection: close',
           '',
           '',
@@ -177,14 +180,15 @@ test('local dev open skips play-site only on localhost', async () => {
       socket.on('end', () => resolve(data))
       socket.on('error', reject)
     })
-    assert.match(remote, /^HTTP\/1\.1 401/)
+    assert.match(remote, /^HTTP\/1\.1 200/)
+    assert.match(remote, /instance=inst-a/)
   } finally {
     await closeScene(state)
   }
 })
 
 test('stopped instance is not opened again', async () => {
-  const state = await scene({ devOpen: true })
+  const state = await scene()
   try {
     const created = await admin(state.gateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-a' })
     assert.equal(created.status, 201)
@@ -195,6 +199,44 @@ test('stopped instance is not opened again', async () => {
     assert.match(await page.text(), /实例已停止/)
     assert.equal(state.db.get('inst-a')?.status, 'stopped')
   } finally {
+    await closeScene(state)
+  }
+})
+
+test('env list follows the play-site user and still opens when that site approves everyone', async () => {
+  const state = await scene()
+  const approved = await startMock(null)
+  const approvedConfig = tempConfig({ playSiteUrl: approved.url, defaultLlmKey: 'default-key' })
+  const approvedDb = openDb(approvedConfig.dbPath)
+  const approvedLauncher = createLauncher(approvedConfig, approvedDb)
+  const approvedGateway = await startGateway(approvedConfig, approvedLauncher)
+  try {
+    await admin(state.gateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-a' })
+    await admin(state.gateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-b' })
+    const denied = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances`)
+    assert.equal(denied.status, 401)
+    const userA = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances`, {
+      headers: { cookie: 'play_site_token=token-a' },
+    })
+    assert.equal(userA.status, 200)
+    assert.deepEqual((await userA.json() as { id: string }[]).map((row) => row.id), ['inst-a'])
+
+    const createdA = await admin(approvedGateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-a' })
+    const createdB = await admin(approvedGateway.port, 'POST', '/admin/instances', 'test-admin-token', { id: 'inst-b' })
+    assert.equal(createdA.status, 201)
+    assert.equal(createdB.status, 201)
+    approved.setInstances(['inst-a', 'inst-b'])
+    const everyone = await fetch(`http://127.0.0.1:${approvedGateway.port}/manage/api/instances`)
+    assert.equal(everyone.status, 200)
+    assert.deepEqual((await everyone.json() as { id: string }[]).map((row) => row.id), ['inst-a', 'inst-b'])
+  } finally {
+    await approvedGateway.close()
+    for (const row of approvedDb.list()) {
+      if (row.status !== 'deleted') await approvedLauncher.stop(row.id).catch(() => undefined)
+    }
+    approvedLauncher.close()
+    approvedDb.close()
+    await approved.close()
     await closeScene(state)
   }
 })
@@ -210,9 +252,15 @@ test('manage api creates starts stops and deletes without auth', async () => {
     assert.equal(created.status, 201)
 
     const listed = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances`)
-    assert.equal(listed.status, 200)
-    const rows = await listed.json() as { id: string, status: string }[]
-    assert.ok(rows.some((row) => row.id === 'manage-test'))
+    assert.equal(listed.status, 401)
+    assert.match(await listed.text(), /未登录/)
+
+    const mine = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances`, {
+      headers: { cookie: 'play_site_token=token-a' },
+    })
+    assert.equal(mine.status, 200)
+    const rows = await mine.json() as { id: string }[]
+    assert.equal(rows.some((row) => row.id === 'manage-test'), false)
 
     const stopped = await fetch(`http://127.0.0.1:${state.gateway.port}/manage/api/instances/manage-test/stop`, {
       method: 'POST',

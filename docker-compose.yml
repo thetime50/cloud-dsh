@@ -24,6 +24,23 @@ services:
       - cloud-dsh-private:/private
     restart: unless-stopped
 
+  mock-play-site:
+    image: node:24-bookworm-slim
+    container_name: mock-play-site
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: "3001"
+      CLOUD_DSH_GATEWAY_URL: http://cloud-dsh:8080
+      CLOUD_DSH_ADMIN_TOKEN: ${CLOUD_DSH_ADMIN_TOKEN}
+    volumes:
+      - ./tools/mock-play-site:/app
+    depends_on:
+      - cloud-dsh
+    restart: unless-stopped
+
 volumes:
   cloud-dsh-storage:
   cloud-dsh-private:
